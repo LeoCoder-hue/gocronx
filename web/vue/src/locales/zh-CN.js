@@ -66,9 +66,9 @@ export default {
     protocol: '执行方式',
     httpMethod: '请求方法',
     httpBody: '请求 Body',
-    httpBodyPlaceholder: 'POST 请求的 JSON Body，例如 {"key": "value"}',
+    httpBodyPlaceholder: 'POST 请求的 JSON Body，例如 {\'{\'}"key": "value"{\'}\'}',
     httpHeaders: '自定义 Header',
-    httpHeadersPlaceholder: 'JSON 格式，例如 {"Authorization": "Bearer token"}',
+    httpHeadersPlaceholder: 'JSON 格式，例如 {\'{\'}"Authorization": "Bearer token"{\'}\'}',
     successPattern: '响应断言',
     successPatternPlaceholder: '正则表达式匹配响应内容，为空则不校验',
     taskNode: '任务节点',
@@ -99,10 +99,13 @@ export default {
     viewLog: '查看日志',
     enable: '启用',
     disable: '禁用',
-    mainTaskTip: '主任务可以配置多个子任务, 当主任务执行完成后，自动执行子任务<br>任务类型新增后不能变更',
-    dependencyTip: '强依赖: 主任务执行成功，才会运行子任务<br>弱依赖: 无论主任务执行是否成功，都会运行子任务',
+    mainTaskTip:
+      '主任务可以配置多个子任务, 当主任务执行完成后，自动执行子任务<br>任务类型新增后不能变更',
+    dependencyTip:
+      '强依赖: 主任务执行成功，才会运行子任务<br>弱依赖: 无论主任务执行是否成功，都会运行子任务',
     timeoutTip: '任务执行超时强制结束, 取值0-86400(秒), 默认3600, 0表示不限制',
-    singleInstanceTip: '单实例运行, 前次任务未执行完成，下次任务调度时间到了是否要执行, 即是否允许多进程执行同一任务',
+    singleInstanceTip:
+      '单实例运行, 前次任务未执行完成，下次任务调度时间到了是否要执行, 即是否允许多进程执行同一任务',
     cronStandard: '标准语法（秒 分 时 天 月 周）',
     cronShortcut: '快捷语法',
     notifyDisabled: '不通知',
@@ -132,7 +135,8 @@ export default {
     autoRegister: '自动注册',
     agentInstall: 'Agent安装',
     installCommand: '安装命令',
-    installTip: '在目标服务器上执行对应的命令，将自动安装并注册Agent节点。注意：必须使用非root用户执行安装脚本',
+    installTip:
+      '在目标服务器上执行对应的命令，将自动安装并注册Agent节点。注意：必须使用非root用户执行安装脚本',
     tokenExpires: 'Token有效期',
     tokenUsage: '使用说明',
     tokenReusable: '此Token可在有效期内重复使用，适用于批量安装',
@@ -227,9 +231,14 @@ export default {
     taskNameVar: '任务名称',
     statusVar: '任务执行结果状态',
     resultVar: '任务执行输出',
-    emailTemplatePlaceholder: function () { return `${this.taskIdVar}: {{.TaskId}}\\n${this.taskNameVar}: {{.TaskName}}\\n${this.statusVar}: {{.Status}}\\n${this.resultVar}: {{.Result}}` },
-    slackTemplatePlaceholder: function () { return `${this.taskIdVar}: {{.TaskId}}\\n${this.taskNameVar}: {{.TaskName}}\\n${this.statusVar}: {{.Status}}\\n${this.resultVar}: {{.Result}}` },
-    webhookTemplatePlaceholder: '{"task_id": "{{.TaskId}}", "task_name": "{{.TaskName}}", "status": "{{.Status}}", "result": "{{.Result}}", "remark": "{{.Remark}}"}'
+    emailTemplatePlaceholder: function () {
+      return `${this.taskIdVar}: {{.TaskId}}\\n${this.taskNameVar}: {{.TaskName}}\\n${this.statusVar}: {{.Status}}\\n${this.resultVar}: {{.Result}}`
+    },
+    slackTemplatePlaceholder: function () {
+      return `${this.taskIdVar}: {{.TaskId}}\\n${this.taskNameVar}: {{.TaskName}}\\n${this.statusVar}: {{.Status}}\\n${this.resultVar}: {{.Result}}`
+    },
+    webhookTemplatePlaceholder:
+      '{"task_id": "{{.TaskId}}", "task_name": "{{.TaskName}}", "status": "{{.Status}}", "result": "{{.Result}}", "remark": "{{.Remark}}"}'
   },
   taskLog: {
     list: '任务日志',
