@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestHTTPHandlerRunGetCapsTimeout(t *testing.T) {
+func TestHTTPHandlerRunGetUsesCustomTimeout(t *testing.T) {
 	original := httpGetFunc
 	defer func() { httpGetFunc = original }()
 
@@ -45,8 +46,31 @@ func TestHTTPHandlerRunGetCapsTimeout(t *testing.T) {
 	if result != "ok" {
 		t.Fatalf("unexpected result %s", result)
 	}
-	if capturedTimeout != HttpExecTimeout {
-		t.Fatalf("expected timeout capped to %d, got %d", HttpExecTimeout, capturedTimeout)
+	// Custom timeout should be preserved (no longer capped at 300)
+	if capturedTimeout != 1000 {
+		t.Fatalf("expected timeout 1000, got %d", capturedTimeout)
+	}
+}
+
+func TestHTTPHandlerRunGetDefaultTimeout(t *testing.T) {
+	original := httpGetFunc
+	defer func() { httpGetFunc = original }()
+
+	var capturedTimeout int
+	httpGetFunc = func(url string, timeout int) httpclient.ResponseWrapper {
+		capturedTimeout = timeout
+		return httpclient.ResponseWrapper{StatusCode: http.StatusOK, Body: "ok"}
+	}
+
+	handler := &HTTPHandler{}
+	task := models.Task{
+		Command:    "http://example.com",
+		Timeout:    0, // not set
+		HttpMethod: models.TaskHTTPMethodGet,
+	}
+	handler.Run(task, 1)
+	if capturedTimeout != HttpDefaultTimeout {
+		t.Fatalf("expected default timeout %d, got %d", HttpDefaultTimeout, capturedTimeout)
 	}
 }
 
@@ -99,6 +123,205 @@ func TestHTTPHandlerRunReturnsErrorForNon200(t *testing.T) {
 	}
 	if result != "bad" {
 		t.Fatalf("unexpected result %s", result)
+	}
+}
+
+func TestHTTPHandlerRunPostJsonBody(t *testing.T) {
+	original := httpPostJsonFunc
+	defer func() { httpPostJsonFunc = original }()
+
+	var capturedBody string
+	httpPostJsonFunc = func(url, body string, timeout int) httpclient.ResponseWrapper {
+		capturedBody = body
+		return httpclient.ResponseWrapper{StatusCode: http.StatusOK, Body: "ok"}
+	}
+
+	handler := &HTTPHandler{}
+	task := models.Task{
+		Command:    "http://example.com/api",
+		HttpMethod: models.TaskHttpMethodPost,
+		HttpBody:   `{"key":"value"}`,
+		Timeout:    10,
+	}
+	_, err := handler.Run(task, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedBody != `{"key":"value"}` {
+		t.Fatalf("expected JSON body, got %s", capturedBody)
+	}
+}
+
+func TestHTTPHandlerRunPostFallbackToParams(t *testing.T) {
+	original := httpPostParamsFunc
+	defer func() { httpPostParamsFunc = original }()
+
+	var capturedParams string
+	httpPostParamsFunc = func(url, params string, timeout int) httpclient.ResponseWrapper {
+		capturedParams = params
+		return httpclient.ResponseWrapper{StatusCode: http.StatusOK, Body: "ok"}
+	}
+
+	handler := &HTTPHandler{}
+	task := models.Task{
+		Command:    "http://example.com/api?a=1",
+		HttpMethod: models.TaskHttpMethodPost,
+		HttpBody:   "",   // empty — should fallback to URL params
+		Timeout:    10,
+	}
+	_, err := handler.Run(task, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedParams != "a=1" {
+		t.Fatalf("expected params 'a=1', got %s", capturedParams)
+	}
+}
+
+func TestHTTPHandlerRunSuccessPatternMatch(t *testing.T) {
+	original := httpGetFunc
+	defer func() { httpGetFunc = original }()
+
+	httpGetFunc = func(url string, timeout int) httpclient.ResponseWrapper {
+		return httpclient.ResponseWrapper{StatusCode: http.StatusOK, Body: `{"status":"ok","code":0}`}
+	}
+
+	handler := &HTTPHandler{}
+	task := models.Task{
+		Command:        "http://example.com",
+		HttpMethod:     models.TaskHTTPMethodGet,
+		SuccessPattern: `"code":0`,
+		Timeout:        10,
+	}
+	_, err := handler.Run(task, 1)
+	if err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+}
+
+func TestHTTPHandlerRunSuccessPatternNoMatch(t *testing.T) {
+	original := httpGetFunc
+	defer func() { httpGetFunc = original }()
+
+	httpGetFunc = func(url string, timeout int) httpclient.ResponseWrapper {
+		return httpclient.ResponseWrapper{StatusCode: http.StatusOK, Body: `{"status":"error","code":1}`}
+	}
+
+	handler := &HTTPHandler{}
+	task := models.Task{
+		Command:        "http://example.com",
+		HttpMethod:     models.TaskHTTPMethodGet,
+		SuccessPattern: `"code":0`,
+		Timeout:        10,
+	}
+	_, err := handler.Run(task, 1)
+	if err == nil {
+		t.Fatal("expected error for non-matching pattern")
+	}
+	if !strings.Contains(err.Error(), "does not match success_pattern") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestHTTPHandlerRunSuccessPatternInvalidRegex(t *testing.T) {
+	original := httpGetFunc
+	defer func() { httpGetFunc = original }()
+
+	httpGetFunc = func(url string, timeout int) httpclient.ResponseWrapper {
+		return httpclient.ResponseWrapper{StatusCode: http.StatusOK, Body: "ok"}
+	}
+
+	handler := &HTTPHandler{}
+	task := models.Task{
+		Command:        "http://example.com",
+		HttpMethod:     models.TaskHTTPMethodGet,
+		SuccessPattern: `[invalid`,
+		Timeout:        10,
+	}
+	_, err := handler.Run(task, 1)
+	if err == nil {
+		t.Fatal("expected error for invalid regex")
+	}
+	if !strings.Contains(err.Error(), "invalid success_pattern regex") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestHTTPHandlerRunEmptyPatternSkipsCheck(t *testing.T) {
+	original := httpGetFunc
+	defer func() { httpGetFunc = original }()
+
+	httpGetFunc = func(url string, timeout int) httpclient.ResponseWrapper {
+		return httpclient.ResponseWrapper{StatusCode: http.StatusOK, Body: "anything"}
+	}
+
+	handler := &HTTPHandler{}
+	task := models.Task{
+		Command:        "http://example.com",
+		HttpMethod:     models.TaskHTTPMethodGet,
+		SuccessPattern: "", // empty — should skip assertion
+		Timeout:        10,
+	}
+	_, err := handler.Run(task, 1)
+	if err != nil {
+		t.Fatalf("expected success with empty pattern, got: %v", err)
+	}
+}
+
+func TestHTTPHandlerRunGetWithHeaders(t *testing.T) {
+	original := httpGetWithHeadersFunc
+	defer func() { httpGetWithHeadersFunc = original }()
+
+	var capturedHeaders string
+	httpGetWithHeadersFunc = func(url, headers string, timeout int) httpclient.ResponseWrapper {
+		capturedHeaders = headers
+		return httpclient.ResponseWrapper{StatusCode: http.StatusOK, Body: "ok"}
+	}
+
+	handler := &HTTPHandler{}
+	task := models.Task{
+		Command:     "http://example.com",
+		HttpMethod:  models.TaskHTTPMethodGet,
+		HttpHeaders: `{"Authorization":"Bearer abc"}`,
+		Timeout:     10,
+	}
+	_, err := handler.Run(task, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedHeaders != `{"Authorization":"Bearer abc"}` {
+		t.Fatalf("expected headers passed through, got %s", capturedHeaders)
+	}
+}
+
+func TestHTTPHandlerRunPostJsonWithHeaders(t *testing.T) {
+	original := httpPostJsonWithHdrsFunc
+	defer func() { httpPostJsonWithHdrsFunc = original }()
+
+	var capturedBody, capturedHeaders string
+	httpPostJsonWithHdrsFunc = func(url, body, headers string, timeout int) httpclient.ResponseWrapper {
+		capturedBody = body
+		capturedHeaders = headers
+		return httpclient.ResponseWrapper{StatusCode: http.StatusOK, Body: "ok"}
+	}
+
+	handler := &HTTPHandler{}
+	task := models.Task{
+		Command:     "http://example.com/api",
+		HttpMethod:  models.TaskHttpMethodPost,
+		HttpBody:    `{"key":"val"}`,
+		HttpHeaders: `{"X-Token":"secret"}`,
+		Timeout:     10,
+	}
+	_, err := handler.Run(task, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedBody != `{"key":"val"}` {
+		t.Fatalf("expected body, got %s", capturedBody)
+	}
+	if capturedHeaders != `{"X-Token":"secret"}` {
+		t.Fatalf("expected headers, got %s", capturedHeaders)
 	}
 }
 

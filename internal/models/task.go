@@ -78,6 +78,9 @@ type Task struct {
 	Protocol         TaskProtocol         `json:"protocol" gorm:"type:tinyint;not null;index"`
 	Command          string               `json:"command" gorm:"type:text;not null"`
 	HttpMethod       TaskHTTPMethod       `json:"http_method" gorm:"type:tinyint;not null;default:1"`
+	HttpBody         string               `json:"http_body" gorm:"type:text;not null;default:''"`
+	HttpHeaders      string               `json:"http_headers" gorm:"type:text;not null;default:''"`
+	SuccessPattern   string               `json:"success_pattern" gorm:"type:varchar(512);not null;default:''"`
 	Timeout          int                  `json:"timeout" gorm:"type:mediumint;not null;default:0"`
 	Multi            int8                 `json:"multi" gorm:"type:tinyint;not null;default:1"`
 	RetryTimes       int8                 `json:"retry_times" gorm:"type:tinyint;not null;default:0"`
@@ -111,6 +114,9 @@ func (task *Task) Create() (insertId int, err error) {
 		"protocol":           task.Protocol,
 		"command":            task.Command,
 		"http_method":        task.HttpMethod,
+		"http_body":          task.HttpBody,
+		"http_headers":       task.HttpHeaders,
+		"success_pattern":    task.SuccessPattern,
 		"timeout":            task.Timeout,
 		"multi":              task.Multi,
 		"retry_times":        task.RetryTimes,
@@ -142,7 +148,8 @@ func (task *Task) UpdateBean(id int) (int64, error) {
 		Select("name", "spec", "protocol", "command", "timeout", "multi",
 			"retry_times", "retry_interval", "remark", "notify_status",
 			"notify_type", "notify_receiver_id", "dependency_task_id",
-			"dependency_status", "tag", "http_method", "notify_keyword",
+			"dependency_status", "tag", "http_method", "http_body",
+			"http_headers", "success_pattern", "notify_keyword",
 			"log_retention_days").
 		UpdateColumns(map[string]interface{}{
 			"name":               task.Name,
@@ -161,6 +168,9 @@ func (task *Task) UpdateBean(id int) (int64, error) {
 			"dependency_status":  task.DependencyStatus,
 			"tag":                task.Tag,
 			"http_method":        task.HttpMethod,
+			"http_body":          task.HttpBody,
+			"http_headers":       task.HttpHeaders,
+			"success_pattern":    task.SuccessPattern,
 			"notify_keyword":     task.NotifyKeyword,
 			"log_retention_days": task.LogRetentionDays,
 		})

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,9 +27,13 @@ var (
 )
 
 var (
-	httpGetFunc        = httpclient.Get
-	httpPostParamsFunc = httpclient.PostParams
-	notifyPushFunc     = notify.Push
+	httpGetFunc              = httpclient.Get
+	httpPostParamsFunc       = httpclient.PostParams
+	httpPostJsonFunc         = httpclient.PostJson
+	httpGetWithHeadersFunc   = httpclient.GetWithHeaders
+	httpPostJsonWithHdrsFunc = httpclient.PostJsonWithHeaders
+	httpPostParamsWithHdrs   = httpclient.PostParamsWithHeaders
+	notifyPushFunc           = notify.Push
 	sleepFunc          = time.Sleep
 
 	// 定时任务调度管理器
@@ -346,28 +351,59 @@ type Handler interface {
 // HTTP任务
 type HTTPHandler struct{}
 
-// http任务执行时间不超过300秒
-const HttpExecTimeout = 300
+// HttpDefaultTimeout HTTP 任务默认超时（秒），用户未设置时使用
+const HttpDefaultTimeout = 300
 
 func (h *HTTPHandler) Run(taskModel models.Task, taskUniqueId int64) (result string, err error) {
-	if taskModel.Timeout <= 0 || taskModel.Timeout > HttpExecTimeout {
-		taskModel.Timeout = HttpExecTimeout
+	if taskModel.Timeout <= 0 {
+		taskModel.Timeout = HttpDefaultTimeout
 	}
+
+	headers := strings.TrimSpace(taskModel.HttpHeaders)
 	var resp httpclient.ResponseWrapper
 	if taskModel.HttpMethod == models.TaskHTTPMethodGet {
-		resp = httpGetFunc(taskModel.Command, taskModel.Timeout)
-	} else {
-		urlFields := strings.Split(taskModel.Command, "?")
-		taskModel.Command = urlFields[0]
-		var params string
-		if len(urlFields) >= 2 {
-			params = urlFields[1]
+		if headers != "" {
+			resp = httpGetWithHeadersFunc(taskModel.Command, headers, taskModel.Timeout)
+		} else {
+			resp = httpGetFunc(taskModel.Command, taskModel.Timeout)
 		}
-		resp = httpPostParamsFunc(taskModel.Command, params, taskModel.Timeout)
+	} else {
+		// POST: 优先使用 HttpBody (JSON)，否则回退到 URL query 参数
+		if strings.TrimSpace(taskModel.HttpBody) != "" {
+			if headers != "" {
+				resp = httpPostJsonWithHdrsFunc(taskModel.Command, taskModel.HttpBody, headers, taskModel.Timeout)
+			} else {
+				resp = httpPostJsonFunc(taskModel.Command, taskModel.HttpBody, taskModel.Timeout)
+			}
+		} else {
+			urlFields := strings.Split(taskModel.Command, "?")
+			url := urlFields[0]
+			var params string
+			if len(urlFields) >= 2 {
+				params = urlFields[1]
+			}
+			if headers != "" {
+				resp = httpPostParamsWithHdrs(url, params, headers, taskModel.Timeout)
+			} else {
+				resp = httpPostParamsFunc(url, params, taskModel.Timeout)
+			}
+		}
 	}
+
 	// 返回状态码非200，均为失败
 	if resp.StatusCode != http.StatusOK {
 		return resp.Body, fmt.Errorf("HTTP status code is not 200-->%d", resp.StatusCode)
+	}
+
+	// 响应内容断言
+	if taskModel.SuccessPattern != "" {
+		re, regexErr := regexp.Compile(taskModel.SuccessPattern)
+		if regexErr != nil {
+			return resp.Body, fmt.Errorf("invalid success_pattern regex: %v", regexErr)
+		}
+		if !re.MatchString(resp.Body) {
+			return resp.Body, fmt.Errorf("response body does not match success_pattern: %s", taskModel.SuccessPattern)
+		}
 	}
 
 	return resp.Body, err

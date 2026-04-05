@@ -46,7 +46,7 @@ func (migration *Migration) Upgrade(oldVersionId int) {
 		return
 	}
 
-	versionIds := []int{110, 122, 130, 140, 150, 151, 152, 153, 154, 155, 156, 157, 158}
+	versionIds := []int{110, 122, 130, 140, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159}
 	upgradeFuncs := []func(*gorm.DB) error{
 		migration.upgradeFor110,
 		migration.upgradeFor122,
@@ -61,6 +61,7 @@ func (migration *Migration) Upgrade(oldVersionId int) {
 		migration.upgradeFor156,
 		migration.upgradeFor157,
 		migration.upgradeFor158,
+		migration.upgradeFor159,
 	}
 
 	startIndex := -1
@@ -568,6 +569,42 @@ func (m *Migration) upgradeFor158(tx *gorm.DB) error {
 	}
 
 	logger.Info("已升级到v1.5.8\n")
+
+	return nil
+}
+
+// 升级到v1.5.9版本 - HTTP任务增强：POST Body、自定义Header、响应断言
+func (m *Migration) upgradeFor159(tx *gorm.DB) error {
+	logger.Info("开始升级到v1.5.9 - HTTP任务增强")
+
+	// 添加 http_body 字段
+	if !tx.Migrator().HasColumn(&Task{}, "http_body") {
+		if err := tx.Migrator().AddColumn(&Task{}, "HttpBody"); err != nil {
+			logger.Warn("添加 http_body 字段失败", err)
+		} else {
+			logger.Info("✓ 已添加 http_body 字段")
+		}
+	}
+
+	// 添加 http_headers 字段
+	if !tx.Migrator().HasColumn(&Task{}, "http_headers") {
+		if err := tx.Migrator().AddColumn(&Task{}, "HttpHeaders"); err != nil {
+			logger.Warn("添加 http_headers 字段失败", err)
+		} else {
+			logger.Info("✓ 已添加 http_headers 字段")
+		}
+	}
+
+	// 添加 success_pattern 字段
+	if !tx.Migrator().HasColumn(&Task{}, "success_pattern") {
+		if err := tx.Migrator().AddColumn(&Task{}, "SuccessPattern"); err != nil {
+			logger.Warn("添加 success_pattern 字段失败", err)
+		} else {
+			logger.Info("✓ 已添加 success_pattern 字段")
+		}
+	}
+
+	logger.Info("已升级到v1.5.9\n")
 
 	return nil
 }

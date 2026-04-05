@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gocronx-team/cron"
 	"github.com/gocronx-team/gocron/internal/models"
+	"github.com/gocronx-team/gocron/internal/modules/httpclient"
 	"github.com/gocronx-team/gocron/internal/modules/i18n"
 	"github.com/gocronx-team/gocron/internal/modules/logger"
 	"github.com/gocronx-team/gocron/internal/modules/utils"
@@ -25,6 +26,9 @@ type TaskForm struct {
 	Protocol         models.TaskProtocol         `form:"protocol" json:"protocol" binding:"oneof=1 2"`
 	Command          string                      `form:"command" json:"command" binding:"required,max=65535"`
 	HttpMethod       models.TaskHTTPMethod       `form:"http_method" json:"http_method" binding:"oneof=1 2"`
+	HttpBody         string                      `form:"http_body" json:"http_body" binding:"max=65535"`
+	HttpHeaders      string                      `form:"http_headers" json:"http_headers" binding:"max=4096"`
+	SuccessPattern   string                      `form:"success_pattern" json:"success_pattern" binding:"max=512"`
 	Timeout          int                         `form:"timeout" json:"timeout" binding:"min=0,max=86400"`
 	Multi            int8                        `form:"multi" json:"multi" binding:"oneof=0 1"`
 	RetryTimes       int8                        `form:"retry_times" json:"retry_times"`
@@ -132,14 +136,18 @@ func Store(c *gin.Context) {
 		return
 	}
 	taskModel.HttpMethod = form.HttpMethod
+	// 校验 HttpHeaders（JSON 格式 + 黑名单检查）
+	if err := httpclient.ValidateHeaders(form.HttpHeaders); err != nil {
+		base.RespondError(c, "http_headers: "+err.Error())
+		return
+	}
+	taskModel.HttpBody = form.HttpBody
+	taskModel.HttpHeaders = form.HttpHeaders
+	taskModel.SuccessPattern = form.SuccessPattern
 	if taskModel.Protocol == models.TaskHTTP {
 		command := strings.ToLower(taskModel.Command)
 		if !strings.HasPrefix(command, "http://") && !strings.HasPrefix(command, "https://") {
 			base.RespondError(c, i18n.T(c, "invalid_url"))
-			return
-		}
-		if taskModel.Timeout > 300 {
-			base.RespondError(c, i18n.T(c, "http_task_timeout_max_300"))
 			return
 		}
 	}

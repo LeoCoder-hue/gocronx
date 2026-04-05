@@ -164,8 +164,42 @@
                 @blur="validateCommand">
               </el-input>
               <div v-if="commandWarning" class="command-warning" style="color: #E6A23C; font-size: 12px; margin-top: 4px;">
-                ⚠️ {{ commandWarning }}
+                {{ commandWarning }}
               </div>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row v-if="Number(form.protocol) === 1 && Number(form.http_method) === 2">
+          <el-col :span="16">
+            <el-form-item :label="t('task.httpBody')">
+              <el-input
+                type="textarea"
+                :rows="4"
+                :placeholder="t('task.httpBodyPlaceholder')"
+                v-model="form.http_body">
+              </el-input>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row v-if="Number(form.protocol) === 1">
+          <el-col :span="16">
+            <el-form-item :label="t('task.httpHeaders')">
+              <el-input
+                type="textarea"
+                :rows="3"
+                :placeholder="t('task.httpHeadersPlaceholder')"
+                v-model="form.http_headers">
+              </el-input>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row v-if="Number(form.protocol) === 1">
+          <el-col :span="12">
+            <el-form-item :label="t('task.successPattern')">
+              <el-input
+                v-model.trim="form.success_pattern"
+                :placeholder="t('task.successPatternPlaceholder')">
+              </el-input>
             </el-form-item>
           </el-col>
         </el-row>
@@ -336,6 +370,9 @@ const createDefaultForm = () => ({
   spec: '',
   protocol: 2,
   http_method: 1,
+  http_body: '',
+  http_headers: '',
+  success_pattern: '',
   command: '',
   host_id: '',
   host_ids: [],
@@ -532,16 +569,21 @@ export default {
       if (protocolValue === 2) {
         if (!skipValidation) {
           this.$nextTick(() => {
-            this.$refs.form && this.$refs.form.validateField('host_ids')
+            if (this.$refs.form) {
+              const p = this.$refs.form.validateField('host_ids')
+              if (p && p.catch) p.catch(() => {})
+            }
           })
         }
         return
       }
       this.form.host_ids = []
       this.form.host_id = ''
-      if (this.$refs.form) {
-        this.$refs.form.clearValidate('host_ids')
-      }
+      this.$nextTick(() => {
+        if (this.$refs.form) {
+          try { this.$refs.form.clearValidate('host_ids') } catch (_) {}
+        }
+      })
     },
     validateCronSpecField (rule, value, callback) {
       if (this.form.level !== 1) {
@@ -613,6 +655,9 @@ export default {
         spec: taskData.spec,
         protocol: taskData.protocol,
         http_method: taskData.http_method || 1,
+        http_body: taskData.http_body || '',
+        http_headers: taskData.http_headers || '',
+        success_pattern: taskData.success_pattern || '',
         command: taskData.command,
         timeout: taskData.timeout,
         multi: taskData.multi,
@@ -663,7 +708,7 @@ export default {
       })
     },
     submit () {
-      this.$refs.form.validate((valid) => {
+      this.$refs.form.validate().then((valid) => {
         if (!valid) {
           return false
         }
@@ -683,7 +728,7 @@ export default {
         }
 
         this.save()
-      })
+      }).catch(() => {})
     },
     save () {
       // 将标签数组转换为逗号分隔的字符串
