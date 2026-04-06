@@ -247,6 +247,36 @@ func TestHTTPHandlerRunSuccessPatternInvalidRegex(t *testing.T) {
 	}
 }
 
+func TestHTTPHandlerRunSuccessPatternMatchCompactJSON(t *testing.T) {
+	original := httpGetFunc
+	defer func() { httpGetFunc = original }()
+
+	// 模拟 pretty-printed JSON 响应（如 httpbin.org）
+	httpGetFunc = func(url string, timeout int) httpclient.ResponseWrapper {
+		return httpclient.ResponseWrapper{
+			StatusCode: http.StatusOK,
+			Body: `{
+  "json": {
+    "key": "value"
+  },
+  "data": "{\"key\":\"value\"}"
+}`,
+		}
+	}
+
+	handler := &HTTPHandler{}
+	task := models.Task{
+		Command:        "http://example.com",
+		HttpMethod:     models.TaskHTTPMethodGet,
+		SuccessPattern: `"key":"value"`,
+		Timeout:        10,
+	}
+	_, err := handler.Run(task, 1)
+	if err != nil {
+		t.Fatalf("expected success with compacted JSON matching, got error: %v", err)
+	}
+}
+
 func TestHTTPHandlerRunEmptyPatternSkipsCheck(t *testing.T) {
 	original := httpGetFunc
 	defer func() { httpGetFunc = original }()

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -401,12 +403,25 @@ func (h *HTTPHandler) Run(taskModel models.Task, taskUniqueId int64) (result str
 		if regexErr != nil {
 			return resp.Body, fmt.Errorf("invalid success_pattern regex: %v", regexErr)
 		}
+		// 先匹配原始响应体，不匹配再尝试压缩 JSON 后匹配（兼容格式化空白差异）
 		if !re.MatchString(resp.Body) {
-			return resp.Body, fmt.Errorf("response body does not match success_pattern: %s", taskModel.SuccessPattern)
+			compacted := compactJSON(resp.Body)
+			if compacted == resp.Body || !re.MatchString(compacted) {
+				return resp.Body, fmt.Errorf("response body does not match success_pattern: %s", taskModel.SuccessPattern)
+			}
 		}
 	}
 
 	return resp.Body, err
+}
+
+// compactJSON 压缩 JSON 字符串，去掉格式化空白。非 JSON 则原样返回。
+func compactJSON(s string) string {
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, []byte(s)); err != nil {
+		return s
+	}
+	return buf.String()
 }
 
 // RPC调用执行任务
